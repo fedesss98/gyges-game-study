@@ -3,9 +3,13 @@ from players import Player
 
 from datetime import datetime
 import json
+import logging
 import numpy as np
 from pathlib import Path
 
+BOARD_SIZE = 6
+MAXIMUM_WRONG_CHOICES = 13
+MAXIMUM_WRONG_MOVES = 100
 
 class GygesGame:
     def __init__(self, white_pieces, black_pieces, board_size=6, max_turns=200):
@@ -102,6 +106,7 @@ class GygesGame:
         if not isinstance(self.player0, Player) or not isinstance(self.player1, Player):
             raise ValueError("Game cannot start without players!")
         
+        self.over = False
         self.is_playing = True
         self.game_data = {}
         self.clean_board()
@@ -128,8 +133,8 @@ class GygesGame:
             self.clean_board()
             self.selected_cell = self.gameboard[y, x]
             self.selected_piece = self.gameboard[y, x].value
-            # Selected Piece is ready to be moved and cell must be emptied
-            self.gameboard[y, x] = 0
+            # # Selected Piece is ready to be moved and cell must be emptied
+            # self.gameboard[y, x] = 0
             return self.selected_piece
         else:
             raise ValueError("Invalid Selection!\nCell must be within boundaries")
@@ -182,7 +187,8 @@ class GygesGame:
                 raise ValueError("Invalid Move!\nYou cannot move across borders")
             new_cell = self.gameboard[new_y, new_x]
             message = f"Piece {self.selected_piece} moved from cell {(y, x)} to cell: {(new_y, new_x)}"
-            
+            # if new_cell.is_black_home or new_cell.is_white_home:
+                # logging.warning(f"HOME ROW: {message}")
             # Check winning conditions and returns only at the last step
             if i == len(path) - 1:
                 if self._check_winning_conditions(new_cell):
@@ -205,7 +211,11 @@ class GygesGame:
             if visualize:
                 print(self)
 
-    def place_piece(self):
+    def place_piece(self, starting_cell):
+        # Remove Piece from its old cell and
+        old_y, old_x = starting_cell
+        self.gameboard[old_y, old_x] = 0
+        # And place it in the new cell
         y, x = self.selected_cell.y, self.selected_cell.x
         self.gameboard[y, x] = self.selected_piece
 
@@ -220,21 +230,26 @@ class GygesGame:
         available_moves = game.selected_piece
         strategies = []
         wrong_moves = 0
-        while available_moves > 0 and wrong_moves < 25:
+        max_wm = MAXIMUM_WRONG_MOVES
+        while available_moves > 0 and wrong_moves < max_wm:
                 strategy = self.active_player.choose_strategy(available_moves)
                 # Try the strategy:
                 try:
                     available_moves = game.slide(strategy, visualize=False)
                 except ValueError:
+                    if self.active_player.soul == 'human':
+                        print(" invalid sequence of moves")
                     # If this returns an error, nothing happens and a new strategy is chosen
                     wrong_moves += 1
                 else:
                     # When a valid strategy is found, overwrite the value
+                    if self.active_player.soul == 'human' and available_moves > 0:
+                        print(f" you jumped on piece with value {available_moves}, continue...")
                     strategies.extend(strategy)
         if wrong_moves == 25:
             raise ValueError(f"Player {self.active_player} is stuck. Conceding.")
 
-        game.place_piece()
+        game.place_piece(starting_cell=cell)
         return strategies
     
     def play_game(self, max_turns=None, verbose=False):
@@ -242,16 +257,23 @@ class GygesGame:
             raise ValueError("You must explicitly start the game first!")
         t = 0
         max_turns = max_turns if max_turns is not None else self.max_turns
-        while not self.over and t < max_turns:
+        wrong_choices = 0
+        max_wc = MAXIMUM_WRONG_CHOICES
+        wrong_pieces = []
+        while not self.over and t < max_turns and wrong_choices < max_wc:
             # Active player takes turn
-            chosen_cell = self.active_player.choose_piece(self.gameboard)
+            chosen_cell = self.active_player.choose_piece(self.gameboard, wrong_pieces)
             try:
                 movements = self.make_complete_movement(chosen_cell)
             except ValueError as e:
                 # Player is stuck, choose another cell
-                pass
+                wrong_choices += 1
+                wrong_pieces.append(chosen_cell[1])
             else:
+                wrong_pieces = []  # Reset array
                 # The strategy is a collection of all the moves for a selected cell in a turn
+                if self.active_player.verbose:
+                    print(f"  strategy: {self.active_player.strategy}")
                 self.game_data[t] = [chosen_cell, movements, self.gameboard.status]
                 # Prepare next turn
                 t += 1
@@ -261,8 +283,14 @@ class GygesGame:
                     print(self)
         
         if not self.over:
+            if wrong_choices == max_wc:
+                # The active player couldn't find a good piece and concedes
+                print(f"\n*** Player {self.active_player} concedes ***\n")
+                self.over = True
+                self.winning_player = (self.active_player + 1) % 2
+                self.is_playing = False
             # Force the game to stop with a draw
-            self.is_playing = False       
+            self.is_playing = False   
 
         print(self)
 
@@ -288,10 +316,10 @@ class GygesGame:
 if __name__ == "__main__":
     w_starting_config = [2, 1, 3, 2, 3, 1]
     b_starting_config = [2, 1, 3, 3, 1, 2]
-    pw = Player("W", seed=12)
-    pb = Player("B", seed=643)
+    pw = Player("W", soul='random', seed=12, verbose=True)
+    pb = Player("B", soul='random', seed=1325, verbose=True)
     game = GygesGame(w_starting_config, b_starting_config)
     game.add_players(pb, pw)
     game.start()
-    game.play_game(max_turns=100, verbose=True)
+    game.play_game(max_turns=1000, verbose=True)
     game.save()

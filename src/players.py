@@ -9,6 +9,7 @@ class Player:
         self._num = None  # This will be assigned by the game
         self.soul = soul
         self.is_playing = False
+        self._turn_strategy = []
 
         self.rng = None
         if seed is not None:
@@ -43,42 +44,53 @@ class Player:
     @property
     def moves_dict(self):
         return {1: (-1, 0), 2: (1, 0), 3:(0, -1), 4:(0, 1)}
+    
+    @property
+    def strategy(self):
+        return self._turn_strategy
 
-    def choose_piece(self, board: GygesBoard):
+    def choose_piece(self, board: GygesBoard, wrong_pieces=[]):
+        # Reset strategy
+        self._turn_strategy = []
         active_row = self.active_row(board)
         cells_with_pieces = [
             i for i in range(board.size) 
             if board[active_row, i].value > 0]
 
         if self.soul == 'random':
-            cell = int(self.rng.choice(cells_with_pieces))
+            while True:
+                cell = int(self.rng.choice(cells_with_pieces))
+                if cell not in wrong_pieces:
+                    break
         elif self.soul == 'human':
             while True:
-                cell = input(
-                    f"You can choose a Piece in row {active_row} ({cells_with_pieces}): ")
-                if cell[0] != active_row:
-                    print("Bad row selection")
-                elif cell[1] not in cells_with_pieces:
+                cell = int(input(
+                    f"You can choose a Piece in row {active_row} ({cells_with_pieces}): "))
+                if cell not in cells_with_pieces:
                     print("Bad column selection")
                 else:
                     break
         cell = (active_row, cell)
         if self.verbose:
-            print(f"{self.name}: select cell {cell}.")
+            print(f"{self.name}: select cell {cell} with value {board[cell]}.")
         return cell
     
     def choose_strategy(self, n_moves):
         movements = []
         if self.soul == 'human':
             while len(movements) < n_moves:
-                movement = input(
-                    "Input a move (1: UP), (2: DOWN), (3: LEFT), (4: RIGHT): ")
+                movement = int(input(
+                    "Input a move (1: UP), (2: DOWN), (3: LEFT), (4: RIGHT): "))
                 if movement in self.moves_dict.keys():
                     movements.append(movement)
+                else:
+                    print(" invalid move")
         elif self.soul == 'random':
             movements = self.rng.choice(
-                range(len(self.moves_dict)), n_moves, replace=True)
+                range(1, len(self.moves_dict)), n_moves, replace=True)
             movements = movements.tolist()
+
+        self.strategy.append(movements)
         return movements
 
     def __eq__(self, value):
