@@ -13,6 +13,15 @@ class GygesBoard:
             self[0, j].is_white_home = True
             self[-1, j].is_black_home = True
 
+    @property
+    def status(self):
+        """Return a normalized representation of the board"""
+        s = np.zeros(self.board.shape)
+        for i in range(self.board.shape[0]):
+            for j in range(self.board.shape[1]):
+                s[i, j] = self[i, j].value
+        return s / 24
+
     def __len__(self):
         return self.size
 

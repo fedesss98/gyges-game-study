@@ -1,7 +1,10 @@
-from src.boards import GygesBoard
+from boards import GygesBoard
 from players import Player
 
+from datetime import datetime
+import json
 import numpy as np
+from pathlib import Path
 
 
 class GygesGame:
@@ -9,7 +12,9 @@ class GygesGame:
         self.gameboard = GygesBoard(board_size)
 
         self._active_player = 1  # White player starts
+        self.is_playing = False
         self.over = False
+        self.game_data = {}
         self.winning_player = None
         self.max_turns = max_turns
         
@@ -25,11 +30,6 @@ class GygesGame:
         for i, piece in enumerate(black_pieces):
             self.gameboard[b_starting_row, i] = piece
 
-    
-    @property
-    def num_to_player(self):
-        return {0: self.player0, 1: self.player1}
-
     @property
     def player_to_color(self):
         return {0: "B", 1: "W"}
@@ -38,6 +38,10 @@ class GygesGame:
     def active_player(self) -> Player:
         num_to_player = {0: self.player0, 1: self.player1}
         return num_to_player[self._active_player]
+    
+    @active_player.setter
+    def active_player(self, value):
+        self._active_player = value
     
     @property
     def active_row(self):
@@ -66,21 +70,42 @@ class GygesGame:
                 return - (i + 1)
             
     @property
+    def moves_dict(self):
+        return {1: (-1, 0), 2: (1, 0), 3: (0, -1), 4: (0, 1)}
+            
+    @property
     def status_string(self):
         if self.over:
-            return f"PLAYER {self.player_to_color[self.winning_player]} WINS!\n"
+            return f"PLAYER {self.winning_player} WINS!\n"
+        elif self.is_playing:
+            return f"Player {self.active_player} turn.\n"
         else:
-            return f"Player {self.player_to_color[self.active_player]} turn.\n"
+            return f"It's a DRAW!\n"
         
     def add_players(self, player0, player1):
-        for p, obj in zip([player0, player1], [self.player0, self.player1]):
-            if isinstance(p, Player):
-                obj = p
-            else:
-                obj = Player(p)
-            print(f"Added player: {p} to the game.")
+        """Add players: remember that the last added player will start!"""
+        if isinstance(player0, Player):
+            self.player0 = player0
+        else:
+            self.player0 = Player(player0)
+            print(f"Added player: {player1} to the game.")
+        if isinstance(player1, Player):
+            self.player1 = player1
+        else:
+            self.player1 = Player(player1)
+            print(f"Added player: {player1} to the game.")
+        
         self.player0._num = 0
         self.player1._num = 1
+
+    def start(self):
+        if not isinstance(self.player0, Player) or not isinstance(self.player1, Player):
+            raise ValueError("Game cannot start without players!")
+        
+        self.is_playing = True
+        self.game_data = {}
+        self.clean_board()
+        print(f"Starting a new game of Gyges!\n\nInitial configuration:\n{self}")
 
     def clean_board(self):
         for row in self.gameboard:
@@ -127,6 +152,7 @@ class GygesGame:
             if new_cell.is_black_home:
                 self.winning_player = self.active_player
                 self.over = True
+                self.is_playing = False
                 return True
             elif new_cell.is_white_home:
                 raise ValueError("Invalid Move!\nYou cannot finish in your own home row")
@@ -134,14 +160,19 @@ class GygesGame:
             if new_cell.is_white_home:
                 self.winning_player = self.active_player
                 self.over = True
+                self.is_playing = False
                 return True
             elif new_cell.is_black_home:
                 raise ValueError("Invalid Move!\nYou cannot finish in your own home row")
         else:
             return False
     
-    def slide(self, path, visualize=False):
+    def slide(self, strategy, visualize=False):
         current_cell = self.selected_cell
+        try:
+            path = [self.moves_dict[k] for k in strategy]
+        except KeyError:
+            raise ValueError(f"Invalid Move!\nTry one in {self.moves_dict.keys()}")
         for i, (dy, dx) in enumerate(path):
             y, x = current_cell.y, current_cell.x
             self.gameboard[y, x].visited = True
@@ -178,58 +209,75 @@ class GygesGame:
         y, x = self.selected_cell.y, self.selected_cell.x
         self.gameboard[y, x] = self.selected_piece
 
-    def make_complete_movement(game, cell, strategies=[], seed=42):
-
-        if isinstance(seed, np.random.Generator):
-            rng = seed
-        else:
-            rng = np.random.default_rng(seed=seed)
-        correct_moves = [
-            (1, 0), (-1, 0), (0, -1), (0, 1)
-        ]
+    def make_complete_movement(self, cell):
+        """
+        A 'complete movement' is made up of:
+        - piece selection
+        - number of moves dependant upon the value of the piece and the strategy
+        - piece placement in the final position
+        """
         game.select_cell(*cell)
-        jump = game.selected_piece
-        i = 0
-        jump = 2
-        while jump > 0:
-                random_strategy = rng.choice(correct_moves, jump, replace=True)
-                if len(strategies) - 1 < i:
-                    strategies.append(random_strategy)
-                elif strategies[i] is None:
-                    # Generate a random value
-                    strategies[i] = random_strategy
-                
-                strategy = strategies[i]
-
+        available_moves = game.selected_piece
+        strategies = []
+        wrong_moves = 0
+        while available_moves > 0 and wrong_moves < 25:
+                strategy = self.active_player.choose_strategy(available_moves)
+                # Try the strategy:
                 try:
-                    jump = game.slide(strategy, visualize=False)
+                    available_moves = game.slide(strategy, visualize=False)
                 except ValueError:
-                    strategies[i] = None
-                # When a valid strategy is found, overwrite the value
-                strategies[i] = strategy
-                i += 1
+                    # If this returns an error, nothing happens and a new strategy is chosen
+                    wrong_moves += 1
+                else:
+                    # When a valid strategy is found, overwrite the value
+                    strategies.extend(strategy)
+        if wrong_moves == 25:
+            raise ValueError(f"Player {self.active_player} is stuck. Conceding.")
 
         game.place_piece()
         return strategies
     
-    def play_game(self, max_turns=None, seed=None):
-        if seed is None or isinstance(seed, np.random.Generator):
-            rng = seed
-        else:
-            rng = np.random.default_rng(seed)
-
+    def play_game(self, max_turns=None, verbose=False):
+        if not self.is_playing:
+            raise ValueError("You must explicitly start the game first!")
+        t = 0
         max_turns = max_turns if max_turns is not None else self.max_turns
         while not self.over and t < max_turns:
-            selected_cell = self.active_player.choose_piece(self.gameboard)
-
-            movements = make_complete_movement(game, selected_cell, seed=rng)
-
-            # The strategy is a collection of all the moves for a selected cell in a turn
-            strategy[t] = [selected_cell, [m.tolist() for m in movements]]
-            t += 1
-            game.player = (game.player + 1) % 2 
+            # Active player takes turn
+            chosen_cell = self.active_player.choose_piece(self.gameboard)
+            try:
+                movements = self.make_complete_movement(chosen_cell)
+            except ValueError as e:
+                # Player is stuck, choose another cell
+                pass
+            else:
+                # The strategy is a collection of all the moves for a selected cell in a turn
+                self.game_data[t] = [chosen_cell, movements, self.gameboard.status]
+                # Prepare next turn
+                t += 1
+                # Next Player
+                self.active_player = (self.active_player + 1) % 2
+                if verbose:
+                    print(self)
         
-        print(game)
+        if not self.over:
+            # Force the game to stop with a draw
+            self.is_playing = False       
+
+        print(self)
+
+    def save(self, path=None):
+        """Save the game dynamics in JSON format"""
+        if path is None:
+            root = Path(__file__).parent.parent
+            now = datetime.now()
+            file_id = f"{now.year}{now.month}{now.day}{now.hour}{now.minute}"
+            path = Path(root / f"data/game_{file_id}.json")
+            path.mkdir(exist_ok=True, parents=True)
+        
+        with open(path, "w") as f:
+            json.dump(self.game_data, f)
+
     
     def __repr__(self):
         string = str(self.gameboard)
@@ -240,7 +288,10 @@ class GygesGame:
 if __name__ == "__main__":
     w_starting_config = [2, 1, 3, 2, 3, 1]
     b_starting_config = [2, 1, 3, 3, 1, 2]
+    pw = Player("W", seed=12)
+    pb = Player("B", seed=643)
     game = GygesGame(w_starting_config, b_starting_config)
-    print(game)
-    game.add_players("B", "W")
-    game.play_game(max_turns=10)
+    game.add_players(pb, pw)
+    game.start()
+    game.play_game(max_turns=100, verbose=True)
+    game.save()
