@@ -1,4 +1,8 @@
-from boards import GygesBoard
+try:
+    from boards import GygesBoard
+except ModuleNotFoundError:
+    from src.boards import GygesBoard
+    
 
 import numpy as np
 
@@ -12,17 +16,19 @@ class Player:
         self._turn_strategy = []
 
         self.rng = None
-        if seed is not None:
-            self.seed(seed)
+        self._seed = self.seed(int(seed))
         
         self.verbose = verbose
 
     def seed(self, seed):
+        if seed is None:
+            return None
         if isinstance(seed, np.random.Generator):
             self.rng = seed
+            return None
         else:
             self.rng = np.random.default_rng(seed=seed)
-        self.rng = np.random.default_rng(seed=seed)
+            return seed
 
     def active_row(self, board: GygesBoard):
         if self._num == 1:
@@ -49,19 +55,16 @@ class Player:
     def strategy(self):
         return self._turn_strategy
 
-    def choose_piece(self, board: GygesBoard, wrong_pieces=[]):
+    def choose_piece(self, board: GygesBoard):
         # Reset strategy
         self._turn_strategy = []
         active_row = self.active_row(board)
         cells_with_pieces = [
             i for i in range(board.size) 
             if board[active_row, i].value > 0]
-
+        
         if self.soul == 'random':
-            while True:
-                cell = int(self.rng.choice(cells_with_pieces))
-                if cell not in wrong_pieces:
-                    break
+            cell = int(self.rng.choice(cells_with_pieces))
         elif self.soul == 'human':
             while True:
                 cell = int(input(
@@ -87,7 +90,7 @@ class Player:
                     print(" invalid move")
         elif self.soul == 'random':
             movements = self.rng.choice(
-                range(1, len(self.moves_dict)), n_moves, replace=True)
+                range(1, len(self.moves_dict) + 1), n_moves, replace=True)
             movements = movements.tolist()
 
         self.strategy.append(movements)

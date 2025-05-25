@@ -1,5 +1,9 @@
-from boards import GygesBoard
-from players import Player
+try:
+    from boards import GygesBoard
+    from players import Player
+except ModuleNotFoundError:
+    from src.boards import GygesBoard
+    from src.players import Player
 
 from datetime import datetime
 import json
@@ -8,8 +12,8 @@ import numpy as np
 from pathlib import Path
 
 BOARD_SIZE = 6
-MAXIMUM_WRONG_CHOICES = 13
-MAXIMUM_WRONG_MOVES = 100
+MAXIMUM_WRONG_CHOICES = 20
+MAXIMUM_WRONG_MOVES = 1000
 
 class GygesGame:
     def __init__(self, white_pieces, black_pieces, board_size=6, max_turns=200):
@@ -26,6 +30,8 @@ class GygesGame:
         self.player1 = None
 
         # White pieces are in row 0
+        self.w_starting_config = white_pieces
+        self.b_starting_config = black_pieces
         w_starting_row = self.closest_white_row
         b_starting_row = self.closest_black_row
         for i, piece in enumerate(white_pieces):
@@ -226,8 +232,8 @@ class GygesGame:
         - number of moves dependant upon the value of the piece and the strategy
         - piece placement in the final position
         """
-        game.select_cell(*cell)
-        available_moves = game.selected_piece
+        self.select_cell(*cell)
+        available_moves = self.selected_piece
         strategies = []
         wrong_moves = 0
         max_wm = MAXIMUM_WRONG_MOVES
@@ -235,10 +241,11 @@ class GygesGame:
                 strategy = self.active_player.choose_strategy(available_moves)
                 # Try the strategy:
                 try:
-                    available_moves = game.slide(strategy, visualize=False)
+                    available_moves = self.slide(strategy, visualize=False)
                 except ValueError:
+                    self.active_player._turn_strategy.pop()
                     if self.active_player.soul == 'human':
-                        print(" invalid sequence of moves")
+                        print(f" invalid sequence of moves {strategy}")
                     # If this returns an error, nothing happens and a new strategy is chosen
                     wrong_moves += 1
                 else:
@@ -246,11 +253,17 @@ class GygesGame:
                     if self.active_player.soul == 'human' and available_moves > 0:
                         print(f" you jumped on piece with value {available_moves}, continue...")
                     strategies.extend(strategy)
-        if wrong_moves == 25:
+            
+        if wrong_moves == max_wm:
             raise ValueError(f"Player {self.active_player} is stuck. Conceding.")
 
-        game.place_piece(starting_cell=cell)
         return strategies
+    
+    def concede_game(self):
+        print(f"\n*** Player {self.active_player} concedes ***\n")
+        self.over = True
+        self.winning_player = (self.active_player + 1) % 2
+        self.is_playing = False
     
     def play_game(self, max_turns=None, verbose=False):
         if not self.is_playing:
@@ -262,19 +275,25 @@ class GygesGame:
         wrong_pieces = []
         while not self.over and t < max_turns and wrong_choices < max_wc:
             # Active player takes turn
-            chosen_cell = self.active_player.choose_piece(self.gameboard, wrong_pieces)
+            try:
+                chosen_cell = self.active_player.choose_piece(self.gameboard)
+            except ValueError as e:
+                # The player cannot chose any Piece and concedes
+                self.concede_game()
             try:
                 movements = self.make_complete_movement(chosen_cell)
             except ValueError as e:
                 # Player is stuck, choose another cell
                 wrong_choices += 1
                 wrong_pieces.append(chosen_cell[1])
+                self.active_player._turn_strategy = []
             else:
+                self.place_piece(starting_cell=chosen_cell)
                 wrong_pieces = []  # Reset array
                 # The strategy is a collection of all the moves for a selected cell in a turn
                 if self.active_player.verbose:
                     print(f"  strategy: {self.active_player.strategy}")
-                self.game_data[t] = [chosen_cell, movements, self.gameboard.status]
+                self.game_data[t] = [chosen_cell, movements, self.gameboard.status.tolist()]
                 # Prepare next turn
                 t += 1
                 # Next Player
@@ -282,13 +301,12 @@ class GygesGame:
                 if verbose:
                     print(self)
         
+        if wrong_choices == max_wc:
+            # The active player couldn't find a good piece and concedes
+            self.concede_game()
+
         if not self.over:
-            if wrong_choices == max_wc:
-                # The active player couldn't find a good piece and concedes
-                print(f"\n*** Player {self.active_player} concedes ***\n")
-                self.over = True
-                self.winning_player = (self.active_player + 1) % 2
-                self.is_playing = False
+            print("Time is up!\n")
             # Force the game to stop with a draw
             self.is_playing = False   
 
@@ -301,7 +319,18 @@ class GygesGame:
             now = datetime.now()
             file_id = f"{now.year}{now.month}{now.day}{now.hour}{now.minute}"
             path = Path(root / f"data/game_{file_id}.json")
-            path.mkdir(exist_ok=True, parents=True)
+
+        self.game_data['meta'] = {
+            'name': str(path),
+            'player0': {
+                'name': self.player0.name, 
+                'seed': self.player0._seed,
+                'starting config': self.b_starting_config},
+            'player1': {
+                'name': self.player1.name, 
+                'seed': self.player1._seed,
+                'starting config': self.w_starting_config},
+        }
         
         with open(path, "w") as f:
             json.dump(self.game_data, f)
@@ -316,10 +345,10 @@ class GygesGame:
 if __name__ == "__main__":
     w_starting_config = [2, 1, 3, 2, 3, 1]
     b_starting_config = [2, 1, 3, 3, 1, 2]
-    pw = Player("W", soul='random', seed=12, verbose=True)
-    pb = Player("B", soul='random', seed=1325, verbose=True)
+    pw = Player("W", soul='random', seed=7568, verbose=True)
+    pb = Player("B", soul='random', seed=56764, verbose=True)
     game = GygesGame(w_starting_config, b_starting_config)
     game.add_players(pb, pw)
     game.start()
-    game.play_game(max_turns=1000, verbose=True)
-    game.save()
+    game.play_game(max_turns=500, verbose=True)
+    game.save(path="data/try_game.json")
