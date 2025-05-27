@@ -115,6 +115,8 @@ class GygesGame:
         self.over = False
         self.is_playing = True
         self.game_data = {}
+        self.winning_player = None
+        self.active_player = 1
         self.clean_board()
         print(f"Starting a new game of Gyges!\n\nInitial configuration:\n{self}")
 
@@ -308,7 +310,7 @@ class GygesGame:
         if not self.over:
             print("Time is up!\n")
             # Force the game to stop with a draw
-            self.is_playing = False   
+            self.is_playing = False
 
         print(self)
 
@@ -330,6 +332,7 @@ class GygesGame:
                 'name': self.player1.name, 
                 'seed': self.player1._seed,
                 'starting config': self.w_starting_config},
+            'winning player': self.winning_player,
         }
         
         with open(path, "w") as f:
