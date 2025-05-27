@@ -86,7 +86,7 @@ class GygesGame:
     @property
     def status_string(self):
         if self.over:
-            return f"PLAYER {self.winning_player} WINS!\n"
+            return f"PLAYER {self.player_to_color[self.winning_player]} WINS!\n"
         elif self.is_playing:
             return f"Player {self.active_player} turn.\n"
         else:
@@ -98,12 +98,12 @@ class GygesGame:
             self.player0 = player0
         else:
             self.player0 = Player(player0)
-            print(f"Added player: {player1} to the game.")
+        print(f"Added player: {player0} to the game.")
         if isinstance(player1, Player):
             self.player1 = player1
         else:
             self.player1 = Player(player1)
-            print(f"Added player: {player1} to the game.")
+        print(f"Added player: {player1} to the game.")
         
         self.player0._num = 0
         self.player1._num = 1
@@ -163,7 +163,7 @@ class GygesGame:
     def _check_winning_conditions(self, new_cell):
         if self.active_player == 1: 
             if new_cell.is_black_home:
-                self.winning_player = self.active_player
+                self.winning_player = self.active_player._num
                 self.over = True
                 self.is_playing = False
                 return True
@@ -171,7 +171,7 @@ class GygesGame:
                 raise ValueError("Invalid Move!\nYou cannot finish in your own home row")
         elif self.active_player == 0:
             if new_cell.is_white_home:
-                self.winning_player = self.active_player
+                self.winning_player = self.active_player._num
                 self.over = True
                 self.is_playing = False
                 return True
@@ -332,7 +332,7 @@ class GygesGame:
                 'name': self.player1.name, 
                 'seed': self.player1._seed,
                 'starting config': self.w_starting_config},
-            'winning player': self.winning_player,
+            'winning player': self.winning_player if self.winning_player else None,
         }
         
         with open(path, "w") as f:
