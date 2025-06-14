@@ -5,7 +5,8 @@ import numpy as np
 
 # Past seed 32579
 SEED = 492
-RUNS = 100
+RUNS = 1000
+MAX_TURNS = 1000
 
 if __name__ == "__main__":
     print(f"\n{'*'*10} Running {RUNS} games {'*'*10}\n")
@@ -23,5 +24,5 @@ if __name__ == "__main__":
         game = GygesGame(w_starting_config, b_starting_config)
         game.add_players(pb, pw)
         game.start()
-        game.play_game(max_turns=1000, verbose=False)
+        game.play_game(max_turns=MAX_TURNS, verbose=False)
         game.save(path=f"data/game_{seed_p0}_{seed_p1}.json")
