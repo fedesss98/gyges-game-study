@@ -335,7 +335,7 @@ class GygesGame:
                 'name': self.player1.name, 
                 'seed': self.player1._seed,
                 'starting config': self.w_starting_config},
-            'winning player': self.winning_player if self.winning_player else None,
+            'winning player': self.winning_player,
         }
         
         with open(path, "w") as f:
