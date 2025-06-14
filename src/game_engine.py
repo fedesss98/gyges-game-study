@@ -321,6 +321,9 @@ class GygesGame:
             now = datetime.now()
             file_id = f"{now.year}{now.month}{now.day}{now.hour}{now.minute}"
             path = Path(root / f"data/game_{file_id}.json")
+        # Add the JSON extention if not present
+        if path.split(".")[-1] != "json":
+            path = f"{path}.json"
 
         self.game_data['meta'] = {
             'name': str(path),
